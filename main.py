@@ -1,3 +1,9 @@
+from flask import Flask, render_template, Response
+from flask import jsonify
+
+import threading
+import argparse
+
 import cv2
 import numpy as np
 import os
@@ -14,9 +20,27 @@ from tensorflow.keras.callbacks import TensorBoard
 
 from sklearn.metrics import multilabel_confusion_matrix, accuracy_score
 
+# Global variable to store latest result.
+glob = 'Initializing...'
+feed_image = ''
+
+lock = threading.Lock()
+
 mp_holistic = mp.solutions.holistic  # holistic model
 mp_drawing = mp.solutions.drawing_utils  # Drawing Utilities
 
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/predict')
+def predict():
+    # Get real time prediction
+    return jsonify(
+        data=glob
+    )
 
 def mediapipe_detection(image, model):
     # Color Conversion BGR to RGB
@@ -64,70 +88,38 @@ def draw_styled_landmarks(image, results):
                                   color=(245, 117, 66), thickness=2, circle_radius=4),
                               mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2))
 
-
-# cap = cv2.VideoCapture(0)
-# # set mediapipe model
-# with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
-#     while cap.isOpened():
-#         ret, frame = cap.read()  # reading the video frames from camera
-#         # make detaction
-#         image, results = mediapipe_detection(frame, holistic)
-
-#         # draw landmarks
-#         draw_styled_landmarks(image, results)
-#         plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-
-#         # show to screen
-#         cv2.imshow('Opencv Feed', image)
-
-#         # braking the video loop using 'q'
-#         if cv2.waitKey(10) & 0xff == ord('q'):
-#             break
-#     cap.release()
-#     cv2.destroyAllWindows()
-
-
-# print(results.face_landmarks.landmark)
-# print(results.left_hand_landmarks.landmark)
-# print(results.right_hand_landmarks.landmark)
-# print(results.pose_landmarks.landmark)
-#
-# pose = []
-# for res in results.pose_landmarks.landmark:
-#     test = np.array([res.x, res.y, res.z, res.visibility])
-#     pose.append(test)
-
-# the following line produce the same result like the above for loop and this line is use to getting he all possitions
-# of pose and hand array
-
 def extract_keypoints(results):
     pose = np.array([[res.x, res.y, res.z, res.visibility] for res in results.pose_landmarks.landmark]).flatten(
     ) if results.pose_landmarks else np.zeros(33*4)
-    face = np.array([[res.x, res.y, res.z] for res in results.face_landmarks.landmark]).flatten(
-    ) if results.pose_landmarks else np.zeros(468 * 3)
+
+    face = np.array([[res.x, res.y, res.z]
+
+    for res in results.face_landmarks.landmark]).flatten(
+    ) if results.pose_landmarks else np.zero(468 * 3)
+    
     left_hand = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks.landmark]).flatten(
     ) if results.left_hand_landmarks else np.zeros(21*3)
+    
     right_hand = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten(
     ) if results.right_hand_landmarks else np.zeros(21*3)
+    
     return np.concatenate([pose, face, left_hand, right_hand])
 
-
-# result_test = extract_keypoints(results)
-# np.save('0', result_test)
-
-# print(len(extract_keypoints(results)))
-
-# print(len(pose))
-# print(len(face))
-# print(len(left_hand))
-# print(len(right_hand))
-
+def extract_keypoints(results):
+    key1 = np.array([[res.x, res.y, res.z, res.visibility] for res in results.pose_landmarks.landmark]).flatten() if results.pose_landmarks else np.zeros(33*4)
+    key2 = np.array([[res.x, res.y, res.z] for res in results.face_landmarks.landmark]).flatten() if results.face_landmarks else np.zeros(468*3)
+    lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks.landmark]).flatten() if results.left_hand_landmarks else np.zeros(21*3)
+    rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
+    return np.concatenate([key1, key2, lh, rh])
 
 # Path for exported data, numpy arrays
 DATA_PATH = os.path.join('MP_Data')
 
 # Action that we try to detect
-actions = np.array(['hello', 'thanks', 'iloveyou'])
+# actions = np.array(['Hello', 'Thanks', 'I love you'])
+actions = np.array(['bye', 'call me please', 'good', 'hello'])
+# actions = np.array(['hello', 'bye', 'you'])
+# actions = np.array(['bye', 'come together', 'Good Morning', 'hello', 'high five', 'how are you?', 'idle', 'I love you', 'listen up', 'Looser', 'me', 'namaste', 'Not Okay', 'okay', 'peace', 'Please call me..!', 'Rock', 'sorry', 'stop it..!', 'unique', 'wrong', 'you'])
 
 # 30 videos worth of data
 no_sequences = 30
@@ -135,64 +127,11 @@ no_sequences = 30
 # Videos are going to be 30 frames in length
 sequence_length = 30
 
-
-#  Training model
-
-# for action in actions:
-#     for sequence in range(no_sequences):
-#         try:
-#             os.makedirs(os.path.join(DATA_PATH, action, str(sequence)))
-#         except:
-#             pass
-
-# cap = cv2.VideoCapture(0)
-# # set mediapipe model
-# with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
-#     # while cap.isOpened():
-#     # loop through actions
-#     for action in actions:
-#         # loop through sequence or video
-#         for sequence in range(no_sequences):
-#             # loop through video length or sequence length
-#             for frame_num in range(sequence_length):
-#                 # reading the video frames/feed from camera
-#                 ret, frame = cap.read()
-#                 # make detaction
-#                 image, results = mediapipe_detection(frame, holistic)
-#                 print(results)
-#                 # draw landmarks
-#                 draw_styled_landmarks(image, results)
-#                 plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-#
-#                 # Applay wait logic
-#                 if frame_num == 0:
-#                     cv2.putText(image, 'STARTING COLLECTION', (120, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255, 0), 4, cv2.LINE_AA)
-#                     cv2.putText(image, 'Collectiong frames for {} Video Number {}'.format(action, sequence), (15, 12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
-#                     cv2.waitKey(200)
-#                 else:
-#                     cv2.putText(image, 'Collectiong frames for {} Video Number {}'.format(action, sequence), (15, 12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
-#
-#                 # New Export Kelypoints
-#                 keypoints = extract_keypoints(results)
-#                 npy_path = os.path.join(DATA_PATH, action, str(sequence), str(frame_num))
-#                 np.save(npy_path, keypoints)
-#
-#                 # show to screen
-#                 cv2.imshow('Opencv Feed', image)
-#
-#                 # braking the video loop using 'q'
-#                 if cv2.waitKey(10) & 0xff == ord('q'):
-#                     break
-#     cap.release()
-#     cv2.destroyAllWindows()
-#
-
-
 label_map = {label: num for num, label in enumerate(actions)}
 # print(label_map)
 
 sequences, labels = [], []
-
+'''
 for action in actions:
     for sequence in range(no_sequences):
         window = []
@@ -203,20 +142,12 @@ for action in actions:
         sequences.append(window)
         labels.append(label_map[action])
 
-# print(np.array(sequences).shape)
-# print(np.array(labels).shape)
-
 x = np.array(sequences)
 # print(x.shape)
 y = to_categorical(labels).astype(int)
 # print(y)
 
 x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.05)
-
-# print(x_test.shape)
-# print(x_train.shape)
-# print(y_test.shape)
-# print(y_train.shape)
 
 log_dir = os.path.join('Logs')
 tb_callback = TensorBoard(log_dir=log_dir)
@@ -248,11 +179,15 @@ print(actions[np.argmax(res[0])])
 
 actions[np.argmax(y_test[0])]   
 
+# model.save('action.h5')
 
-model.save('action.h5')
-# del model
+from keras.models import load_model
 
-model.load_weights('action.h5')
+model = load_model('action.h5')
+
+model.summary()
+
+# model.load_weights('action.h5')
 
 yhat = model.predict(x_train)
 
@@ -265,80 +200,106 @@ print(yhat)
 mcm = multilabel_confusion_matrix(ytrue, yhat)
 print(mcm)
 a = accuracy_score(ytrue, yhat)
-print(a)
+print(a)    
+'''
 
+from keras.models import load_model
 
-sequence = []
-sentence = []
-threshold = 0.4
+# model = load_model('trained_model_3.h5')
+model = load_model('trained_model_4.h5')
+model.summary()
 
+cap = None
 
-cap = cv2.VideoCapture(0)
-# set mediapipe model
-with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
-    while cap.isOpened():
-        ret, frame = cap.read()  # reading the video frames from camera
-        # make detaction
-        image, results = mediapipe_detection(frame, holistic)
+import json
+def classify():
+    sequence = []
+    sentence = []
+    threshold = 0.4
+    global cap 
+    cap = cv2.VideoCapture(0)
 
-        # draw landmarks
-        draw_styled_landmarks(image, results)
-        plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    cap.set(3,600)
+    cap.set(4,400)
 
-        # result_test = extract_keypoints(results)
-        # np.save('0', result_test)
-        # prediction logic
-        keypoints = extract_keypoints(results)
-        sequence.insert(0, keypoints)
-        sequence = sequence[:30]
+    # set mediapipe model
+    with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
+        while cap.isOpened():
+            ret, frame = cap.read()  # reading the video frames from camera
 
-        if len(sequence) == 30:
-            res = model.predict(np.expand_dims(sequence, axis=0))[0]
-            print(res)
-            print(actions[np.argmax(res)])
+            # make detaction
+            image, results = mediapipe_detection(frame, holistic)
 
-        # visualization logic
-        # try:
-        #     if res[np.argmax(res)] > threshold:
-        #         if len(sentence) > 0:
-        #             print(sentence)
-        #             if actions[np.argmax(res)] != sentence[-1]:
-        #                 sentence.insert(-1, actions[np.argmax(res)])
-        #             else:
-        #                 sentence.insert(-1, actions[np.argmax(res)])
-        #             print(sentence)
-        #     if len(sentence) > 5:
-        #         sentence = sentence[-5:]
-        #     cv2.rectangle(image, (0, 0), (640, 40), (245, 117, 16), -1)
-        #     cv2.putText(image, ' ' .join(sentence), (3, 30),
-        #             cv2.FONT_HERSHE_SUMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-        # except:
-        #     pass
+            # draw landmarks
+            draw_styled_landmarks(image, results)
+            plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
-        # print(np.argmax(res) + " T: " + threshold)
+            # result_test = extract_keypoints(results)
+            # np.save('0', result_test)
+            # prediction logic
+            keypoints = extract_keypoints(results)
+            sequence.insert(0, keypoints)
+            sequence = sequence[:30]
 
-        # if res[np.argmax(res)] > threshold:
-        #     print("Here")
-        #         if len(sentence) > 0:
-        #             print(sentence)
-        #             if actions[np.argmax(res)] != sentence[-1]:
-        #                 sentence.insert(-1, actions[np.argmax(res)])
-        #             else:
-        #                 sentence.insert(-1, actions[np.argmax(res)])
-        #             print(sentence)
+            if len(sequence) == 30:
+                # pred_array_scaled = np.expand_dims(pred_array_scaled, axis=0)
+                # res = model.predict(np.expand_dims(sequence, axis=0))[0]
+                # pred_array = cv2.imread(frame)
+                # pred_array = np.array(pred_array)
+                # pred_array_resized = cv2.resize(pred_array,(224,224,))
+                # pred_array_scaled = np.array(pred_array_resized)/255
+                # res = model.predict(np.expand_dims(sequence, axis=0)) # orig
+                _frame = cv2.resize(frame, (150, 150)).astype("float32")
+                res = model.predict(np.expand_dims(_frame, axis=0))[0]
+                # print(res)
+                # print(actions[np.argmax(res)])
+                global glob
+                glob = actions[np.argmax(res)]
+                global feed_image
+                feed_image = image
+            # # show to screen
+            winname = "OpenCV Feed"
+            cv2.namedWindow(winname)
+            cv2.moveWindow(winname, 20, 310)
+            cv2.imshow(winname, image)
 
-        # if len(sentence) > 5:
-        #     sentence = sentence[-5:]
-        # cv2.rectangle(image, (0, 0), (640, 40), (245, 117, 16), -1)
-        # cv2.putText(image, ' ' .join(sentence), (3, 30),
-        #     cv2.FONT_HERSHE_SUMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+            # braking the video loop using 'q'
+            if cv2.waitKey(10) & 0xff == ord('q'):
+                break
+        cap.release()
+        cv2.destroyAllWindows()
 
-        # # show to screen
-        cv2.imshow('Opencv Feed', image)
+@app.route('/refresh_data')
+def refresh_data():
+    return jsonify({'data': glob})
 
-        # braking the video loop using 'q'
-        if cv2.waitKey(10) & 0xff == ord('q'):
+@app.route('/refresh_image')
+def refresh_image():
+    # return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return jsonify({'data': feed_image})
+
+def generate_frames():
+    while True:
+        success, frame_for_feed = cap.read()
+        if not success:
             break
-    cap.release()
-    cv2.destroyAllWindows()
+        else:
+            ret, buffer = cv2.imencode('.jpg', frame_for_feed)
+            frame_for_feed=buffer.tobytes()
+        yield(b'--frame\r\n', b'Content-Type: image/jpeg\r\n\r\n', frame_for_feed, b'\r\n')
 
+@app.route('/video')
+def video():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == '__main__':
+  ap = argparse.ArgumentParser()
+  ap.add_argument("-i", "--ip", type=str, required=True,
+  help="ip address of the device")
+  ap.add_argument("-o", "--port", type=int, required=True,
+  help="ephemeral port number of the server (1024 to 65535)")
+  args = vars(ap.parse_args())
+  t = threading.Thread(target=classify)
+  t.daemon = True
+  t.start()
+  app.run(host=args["ip"],port=args["port"],debug=True,threaded=True,use_reloader=False)
